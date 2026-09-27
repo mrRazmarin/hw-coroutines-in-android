@@ -5,6 +5,25 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/newPosts"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="16dp"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:text="@string/fresh_posts"
+        android:textAllCaps="false"
+        android:textColor="@android:color/white"
+        android:visibility="gone"
+        app:backgroundTint="#3F73CC"
+        app:cornerRadius="22dp"
+        app:elevation="4dp"
+        app:icon="@drawable/ic_arrow_upward"
+        app:iconGravity="textStart"
+        app:iconTint="@android:color/white" />
+
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent">

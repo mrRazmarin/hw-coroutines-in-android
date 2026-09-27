@@ -38,6 +38,11 @@ class PostViewModel(application: Application) : AndroidViewModel(application) {
         .catch { it.printStackTrace() }
         .asLiveData(Dispatchers.Default)
 
+    val hiddenCount: LiveData<Int> = repository.hiddenCount.asLiveData(Dispatchers.Default)
+
+    private val _scrollToTop = SingleLiveEvent<Unit>()
+    val scrollToTop: LiveData<Unit> get() = _scrollToTop
+
     val newerCount = data.switchMap {
         repository.getNewer(it.posts.firstOrNull()?.id ?: 0)
             .catch { _dataState.postValue(FeedModelState(error = true)) }
@@ -120,6 +125,17 @@ class PostViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 repository.removeById(id)
                 _dataState.value = FeedModelState()
+            } catch (e: Exception) {
+                _dataState.value = FeedModelState(error = true)
+            }
+        }
+    }
+    
+    fun showNewPosts() {
+        viewModelScope.launch {
+            try {
+                repository.showAll()
+                _scrollToTop.value = Unit
             } catch (e: Exception) {
                 _dataState.value = FeedModelState(error = true)
             }

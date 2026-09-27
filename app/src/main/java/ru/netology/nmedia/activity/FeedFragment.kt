@@ -20,6 +20,7 @@ import ru.netology.nmedia.viewmodel.PostViewModel
 class FeedFragment : Fragment() {
 
     private val viewModel: PostViewModel by activityViewModels()
+    private var pendingScrollToTop = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -64,12 +65,37 @@ class FeedFragment : Fragment() {
             }
         }
         viewModel.data.observe(viewLifecycleOwner) { state ->
-            adapter.submitList(state.posts)
+            adapter.submitList(state.posts) {
+                if (pendingScrollToTop && state.posts.isNotEmpty()) {
+                    binding.list.smoothScrollToPosition(0)
+                    pendingScrollToTop = false
+                }
+            }
             binding.emptyText.isVisible = state.empty
         }
 
+        viewModel.hiddenCount.observe(viewLifecycleOwner) { count ->
+            val shouldShow = count > 0
+            if (binding.newPosts.isVisible == shouldShow) return@observe
+            if (shouldShow) {
+                binding.newPosts.alpha = 0f
+                binding.newPosts.translationY = -24f
+                binding.newPosts.isVisible = true
+                binding.newPosts.animate()
+                    .alpha(1f).translationY(0f).setDuration(200).start()
+            } else {
+                binding.newPosts.animate()
+                    .alpha(0f).translationY(-24f).setDuration(200)
+                    .withEndAction { binding.newPosts.isVisible = false }
+                    .start()
+            }
+        }
         viewModel.newerCount.observe(viewLifecycleOwner) {
             println(it)
+        }
+
+        viewModel.scrollToTop.observe(viewLifecycleOwner) {
+            pendingScrollToTop = true
         }
 
         binding.swiperefresh.setOnRefreshListener {
@@ -78,6 +104,10 @@ class FeedFragment : Fragment() {
 
         binding.fab.setOnClickListener {
             findNavController().navigate(R.id.action_feedFragment_to_newPostFragment)
+        }
+
+        binding.newPosts.setOnClickListener {
+            viewModel.showNewPosts()
         }
 
         return binding.root
