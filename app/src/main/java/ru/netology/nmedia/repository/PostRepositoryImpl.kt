@@ -10,6 +10,7 @@ import ru.netology.nmedia.api.PostsApi
 import ru.netology.nmedia.dao.PostDao
 import ru.netology.nmedia.dto.Post
 import ru.netology.nmedia.entity.PostEntity
+import ru.netology.nmedia.entity.toDto
 import ru.netology.nmedia.entity.toEntity
 import ru.netology.nmedia.error.ApiError
 import ru.netology.nmedia.error.AppError
@@ -17,44 +18,34 @@ import ru.netology.nmedia.error.NetworkError
 import ru.netology.nmedia.error.UnknownError
 import java.net.ConnectException
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.time.Duration.Companion.milliseconds
 
 class PostRepositoryImpl(private val dao: PostDao) : PostRepository {
-    override val data = dao.getAll().map {
-        it.map {
-            it.toDto()
-        }
-    }
+    override val data: Flow<List<Post>> = dao.getVisible().map(List<PostEntity>::toDto)
+    override val hiddenCount: Flow<Int> = dao.getHiddenCount()
 
     override suspend fun getAll() {
         try {
             val response = PostsApi.service.getAll()
-            if (!response.isSuccessful) {
-                throw ApiError(response.code(), response.message())
-            }
-
-            val body = response.body() ?: throw ApiError(response.code(), response.message())
-            dao.insert(body.toEntity())
-        } catch (e: IOException) {
-            throw NetworkError
-        } catch (e: Exception) {
-            throw UnknownError
+            if (!response.isSuccessful) throw ApiError(response.code(), "error_api")
+            val body = response.body() ?: throw ApiError(response.code(), "error_api")
+            dao.insert(body.toEntity(shown = true))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            throw AppError.from(e)
         }
     }
 
     override suspend fun save(post: Post) {
         try {
             val response = PostsApi.service.save(post)
-            if (!response.isSuccessful) {
-                throw ApiError(response.code(), response.message())
-            }
-
-            val body = response.body() ?: throw ApiError(response.code(), response.message())
+            if (!response.isSuccessful) throw ApiError(response.code(), "error_api")
+            val body = response.body() ?: throw ApiError(response.code(), "error_api")
             dao.insert(PostEntity.fromDto(body))
-        } catch (e: IOException) {
-            throw NetworkError
-        } catch (e: Exception) {
-            throw UnknownError
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            throw AppError.from(e)
         }
     }
 
@@ -64,16 +55,13 @@ class PostRepositoryImpl(private val dao: PostDao) : PostRepository {
 
         try {
             val response = PostsApi.service.removeById(id)
-            if (!response.isSuccessful) {
-                throw ApiError(response.code(), response.message())
-            }
-        } catch (e: ConnectException) {
+            if (!response.isSuccessful) throw ApiError(response.code(), "error_api")
+        } catch (e: CancellationException) {
             dao.insert(cachedPost)
             throw e
-        } catch (e: IOException) {
-            throw NetworkError
-        } catch (e: Exception) {
-            throw UnknownError
+        } catch (e: Throwable) {
+            dao.insert(cachedPost)
+            throw AppError.from(e)
         }
     }
 
@@ -92,21 +80,15 @@ class PostRepositoryImpl(private val dao: PostDao) : PostRepository {
             } else {
                 PostsApi.service.likeById(id)
             }
-            if (!response.isSuccessful)
-                throw ApiError(response.code(), response.message())
-
-            val body = response.body() ?: throw ApiError(response.code(), response.message())
+            if (!response.isSuccessful) throw ApiError(response.code(), "error_api")
+            val body = response.body() ?: throw ApiError(response.code(), "error_api")
             dao.insert(PostEntity.fromDto(body))
         } catch (e: CancellationException) {
             dao.insert(cachedPost)
             throw e
-        } catch (e: ConnectException) {
+        } catch (e: Throwable) {
             dao.insert(cachedPost)
-            throw e
-        } catch (e: IOException) {
-            throw NetworkError
-        } catch (e: Exception) {
-            throw UnknownError
+            throw AppError.from(e)
         }
     }
 
@@ -114,15 +96,16 @@ class PostRepositoryImpl(private val dao: PostDao) : PostRepository {
         while (true) {
             delay(10_000L)
             val response = PostsApi.service.getNewer(id = id)
-            if (!response.isSuccessful) {
-                throw ApiError(response.code(), response.message())
-            }
-
-            val body = response.body() ?: throw ApiError(response.code(), response.message())
-            dao.insert(body.toEntity())
+            if (!response.isSuccessful) throw ApiError(response.code(), "error_api")
+            val body = response.body() ?: throw ApiError(response.code(), "error_api")
+            dao.insert(body.toEntity(shown = false))
             emit(body.size)
         }
     }.catch { e ->
         throw AppError.from(e)
+    }
+
+    override suspend fun showAll() {
+        dao.markAllAsShown()
     }
 }
