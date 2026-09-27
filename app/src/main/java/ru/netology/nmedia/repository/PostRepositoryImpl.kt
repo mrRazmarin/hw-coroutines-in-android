@@ -11,6 +11,8 @@ import ru.netology.nmedia.entity.toEntity
 import ru.netology.nmedia.error.ApiError
 import ru.netology.nmedia.error.NetworkError
 import ru.netology.nmedia.error.UnknownError
+import java.net.ConnectException
+import kotlin.coroutines.cancellation.CancellationException
 
 class PostRepositoryImpl(private val dao: PostDao) : PostRepository {
     override val data = dao.getAll().map(List<PostEntity>::toDto)
@@ -48,13 +50,17 @@ class PostRepositoryImpl(private val dao: PostDao) : PostRepository {
     }
 
     override suspend fun removeById(id: Long) {
+        val cachedPost = dao.getById(id) ?: throw UnknownError
+        dao.removeById(id)
+
         try {
             val response = PostsApi.service.removeById(id)
-            if (response.isSuccessful) {
-                dao.removeById(id)
-            } else {
+            if (!response.isSuccessful) {
                 throw ApiError(response.code(), response.message())
             }
+        } catch (e: ConnectException) {
+            dao.insert(cachedPost)
+            throw e
         } catch (e: IOException) {
             throw NetworkError
         } catch (e: Exception) {
@@ -63,20 +69,31 @@ class PostRepositoryImpl(private val dao: PostDao) : PostRepository {
     }
 
     override suspend fun likeById(id: Long) {
-        try {
-            val post = data.value?.let { list ->
-                list.find {
-                    it.id == id
-                }
-            }
+        val cachedPost = dao.getById(id) ?: throw UnknownError
+        val willLike = !cachedPost.likedByMe
+        val optimistic = cachedPost.copy(
+            likedByMe = willLike,
+            likes = cachedPost.likes + if (willLike) 1 else -1,
+        )
+        dao.insert(optimistic)
 
-            val response = if (post?.likedByMe == true) {
+        try {
+            val response = if (cachedPost.likedByMe) {
                 PostsApi.service.dislikeById(id)
             } else {
                 PostsApi.service.likeById(id)
             }
+            if (!response.isSuccessful)
+                throw ApiError(response.code(), response.message())
+
             val body = response.body() ?: throw ApiError(response.code(), response.message())
             dao.insert(PostEntity.fromDto(body))
+        } catch (e: CancellationException) {
+            dao.insert(cachedPost)
+            throw e
+        } catch (e: ConnectException) {
+            dao.insert(cachedPost)
+            throw e
         } catch (e: IOException) {
             throw NetworkError
         } catch (e: Exception) {
