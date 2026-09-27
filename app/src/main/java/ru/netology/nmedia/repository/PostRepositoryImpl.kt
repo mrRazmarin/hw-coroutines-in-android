@@ -48,10 +48,39 @@ class PostRepositoryImpl(private val dao: PostDao) : PostRepository {
     }
 
     override suspend fun removeById(id: Long) {
-        TODO("Not yet implemented")
+        try {
+            val response = PostsApi.service.removeById(id)
+            if (response.isSuccessful) {
+                dao.removeById(id)
+            } else {
+                throw ApiError(response.code(), response.message())
+            }
+        } catch (e: IOException) {
+            throw NetworkError
+        } catch (e: Exception) {
+            throw UnknownError
+        }
     }
 
     override suspend fun likeById(id: Long) {
-        TODO("Not yet implemented")
+        try {
+            val post = data.value?.let { list ->
+                list.find {
+                    it.id == id
+                }
+            }
+
+            val response = if (post?.likedByMe == true) {
+                PostsApi.service.dislikeById(id)
+            } else {
+                PostsApi.service.likeById(id)
+            }
+            val body = response.body() ?: throw ApiError(response.code(), response.message())
+            dao.insert(PostEntity.fromDto(body))
+        } catch (e: IOException) {
+            throw NetworkError
+        } catch (e: Exception) {
+            throw UnknownError
+        }
     }
 }
